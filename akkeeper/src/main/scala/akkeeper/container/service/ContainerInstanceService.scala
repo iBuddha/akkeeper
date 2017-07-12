@@ -38,12 +38,14 @@ class ContainerInstanceService(instanceStorage: InstanceStorage.Async,
   private var thisInstance: Option[InstanceInfo] = None
 
   override def preStart(): Unit = {
+    log.info("ContainerInstanceService is starting")
     instanceStorage.start()
     super.preStart()
   }
 
   override def postStop(): Unit = {
     instanceStorage.stop()
+    log.info("ContainerInstanceService stopped")
     super.postStop()
   }
 

@@ -15,6 +15,7 @@
  */
 package akkeeper.api
 
+import akka.actor.ActorRef
 import akkeeper.common._
 import spray.json.DefaultJsonProtocol
 
@@ -60,3 +61,6 @@ trait DeployApiJsonProtocol extends DefaultJsonProtocol
 }
 
 object DeployApiJsonProtocol extends DeployApiJsonProtocol
+
+/* DeployService send to DeployClient to identify self */
+case class DeployServiceRef(deployService: ActorRef)

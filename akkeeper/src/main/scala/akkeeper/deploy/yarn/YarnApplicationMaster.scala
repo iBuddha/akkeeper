@@ -15,9 +15,9 @@
  */
 package akkeeper.deploy.yarn
 
-import java.io.{FileNotFoundException, ByteArrayInputStream}
+import java.io.{ByteArrayInputStream, FileNotFoundException}
 import java.util
-import java.util.concurrent.{TimeUnit, Executors, ScheduledExecutorService}
+import java.util.concurrent.{Executors, ScheduledExecutorService, TimeUnit}
 
 import akkeeper.common.{ContainerDefinition, InstanceId}
 import akkeeper.container.ContainerInstanceMain
@@ -29,12 +29,14 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.yarn.api.records._
 import org.apache.hadoop.yarn.client.api.AMRMClient.ContainerRequest
 import org.slf4j.LoggerFactory
+
 import scala.collection.mutable
 import scala.concurrent.{Future, Promise}
 import scala.util._
 import scala.util.control.NonFatal
 import scala.collection.JavaConverters._
 import YarnApplicationMaster._
+import akka.actor.ActorRef
 
 private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfig,
                                               yarnClient: YarnMasterClient)
@@ -44,6 +46,8 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
 
   private val executorService: ScheduledExecutorService = Executors.newScheduledThreadPool(
     config.config.getInt("akkeeper.yarn.client-threads"))
+
+  private var deplayService: ActorRef = null
 
   private val stagingDirectory: String = config.config
     .getYarnStagingDirectory(config.yarnConf, config.appId)
@@ -55,6 +59,10 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
   private val pendingResults: mutable.Map[InstanceId, Promise[DeployResult]] =
     mutable.Map.empty
   private val containerToInstance: mutable.Map[ContainerId, InstanceId] =
+    mutable.Map.empty
+
+  private val aliveContainerToInstance: mutable.Map[ContainerId, InstanceId] = mutable.Map.empty
+//  private val instanceIdToContainerDefinition: mutable.Map[InstanceId, ContainerDefinition] =
     mutable.Map.empty
   private val pendingInstances: mutable.Map[Int, (ContainerDefinition, InstanceId)] =
     mutable.Map.empty
@@ -76,7 +84,7 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
       val instanceConfigResource = localResourceManager.getExistingLocalResource(
         LocalResourceNames.UserConfigName)
       localResources.put(LocalResourceNames.UserConfigName, instanceConfigResource)
-    } catch  {
+    } catch {
       case _: FileNotFoundException =>
         logger.debug("No user configuration was found")
     }
@@ -99,6 +107,7 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
     })
 
     val fs = FileSystem.get(config.yarnConf)
+
     def addExistingResources(directory: String): Unit = {
       try {
         val resources = fs.listStatus(new Path(stagingDirectory, directory))
@@ -111,6 +120,7 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
         case _: FileNotFoundException =>
       }
     }
+
     // Retrieve a content of the jars/ directory.
     addExistingResources(LocalResourceNames.ExtraJarsDirName)
     // Retrieve a content of the resources/ directory.
@@ -134,7 +144,7 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
     val actorLaunchResource = buildActorLaunchContextResource(containerDefinition, instanceId)
     val instanceResources = instanceCommonResources + (
       LocalResourceNames.ActorLaunchContextsName -> actorLaunchResource
-    )
+      )
 
     val env = containerDefinition.environment
     val javaArgs = containerDefinition.jvmArgs ++ containerDefinition.jvmProperties.map {
@@ -172,6 +182,7 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
       instanceResources.asJava, env.asJava, cmd.asJava,
       null, tokens, null)
 
+    logger.info(s"starting container ${container.getId} on node ${container.getNodeId}")
     Try(yarnClient.startContainer(container, launchContext)) match {
       case Success(_) => onContainerStarted(container.getId)
       case Failure(e) => onStartContainerError(container.getId, e)
@@ -184,6 +195,13 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
 
     pendingResults.remove(instanceId)
     containerToInstance.remove(containerId)
+
+    result match {
+      case DeploySuccessful(instanceId) =>
+        aliveContainerToInstance.put(containerId, instanceId)
+      case _: DeployFailed =>
+    }
+
   }
 
   private def onContainerStarted(containerId: ContainerId): Unit = synchronized {
@@ -210,9 +228,19 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
           override def run(): Unit = launchInstance(container, containerDef, instanceId)
         })
       } else {
-        logger.debug(s"Unknown container allocation ${container.getId}. Realesing container")
+        logger.debug(s"Unknown container allocation ${container.getId}. Releasing container")
         yarnClient.releaseAssignedContainer(container.getId)
       }
+    }
+  }
+
+  private def onContainersComplete(statuses: util.List[ContainerStatus]): Unit = {
+    for (status <- statuses.asScala) {
+      logger.warn(s"container: ${status.getContainerId} failed with state: ${status.getState}")
+      val instanceId = aliveContainerToInstance.get(status.getContainerId).get
+      logger.warn(s"container ${status.getContainerId} for instance $instanceId completed" +
+        s" with code ${status.getExitStatus} because of ${status.getDiagnostics}")
+      deplayService ! ResourceContainerFailure(instanceId)
     }
   }
 
@@ -220,7 +248,7 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
                       instances: Seq[InstanceId]): Seq[Future[DeployResult]] = synchronized {
     instances.map(id => {
       logger.debug(s"Deploying instance $id (container ${container.name})")
-
+//      instanceIdToContainerDefinition.getOrElseUpdate(id, container)
       val promise = Promise[DeployResult]()
       pendingResults.put(id, promise)
 
@@ -233,11 +261,16 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
   }
 
   private def allocateResources(): Unit = {
+    val allocateResponse = yarnClient.allocate(0.2f)
     try {
-      val allocateResponse = yarnClient.allocate(0.2f)
       onContainersAllocated(allocateResponse.getAllocatedContainers)
     } catch {
       case NonFatal(e) => logger.error("YARN allocation failed", e)
+    }
+    try {
+      onContainersComplete(allocateResponse.getCompletedContainersStatuses)
+    } catch {
+      case NonFatal(e) => logger.error("Failed dealing with completed containers", e)
     }
   }
 
@@ -247,13 +280,15 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
     }, AMHeartbeatInterval, AMHeartbeatInterval, TimeUnit.MILLISECONDS)
   }
 
-  override def start(): Unit = {
+  override def start(service: ActorRef): Unit = {
     yarnClient.init(config.yarnConf)
     yarnClient.start()
 
     val localAddr = config.selfAddress.host
       .getOrElse(throw YarnMasterException("The self address is not specified"))
     yarnClient.registerApplicationMaster(localAddr, 0, config.trackingUrl)
+
+    this.deplayService = service
 
     scheduleAllocateResources()
 

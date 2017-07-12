@@ -47,6 +47,7 @@ private[akkeeper] object YarnUtils {
     javaBin ++ allJvmArgs ++ List(mainClass) ++ appArgs ++ List(
       "1>", ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stdout",
       "2>", ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stderr")
+//    javaBin ++ allJvmArgs ++ List(mainClass) ++ appArgs
   }
 
   def getHdfsConfiguration: Configuration = {

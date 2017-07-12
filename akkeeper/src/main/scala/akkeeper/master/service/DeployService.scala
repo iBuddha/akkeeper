@@ -15,12 +15,14 @@
  */
 package akkeeper.master.service
 
-import akka.actor.{Props, ActorRefFactory, ActorRef}
+import akka.actor.{ActorRef, ActorRefFactory, Props}
 import akka.pattern.pipe
 import akkeeper.api._
 import akkeeper.common._
 import akkeeper.deploy._
 import MonitoringService._
+
+import scala.collection.mutable
 
 private[akkeeper] class DeployService(deployClient: DeployClient.Async,
                                       containerService: ActorRef,
@@ -28,6 +30,7 @@ private[akkeeper] class DeployService(deployClient: DeployClient.Async,
 
   private implicit val dispatcher = context.dispatcher
   override protected val trackedMessages: List[Class[_]] = List(classOf[DeployContainer])
+  private val instanceToDefinition: mutable.Map[InstanceId, ContainerDefinition] = mutable.Map.empty
 
   private def deployInstances(request: DeployContainer,
                               container: ContainerDefinition): SubmittedInstances = {
@@ -39,7 +42,13 @@ private[akkeeper] class DeployService(deployClient: DeployClient.Async,
       jvmArgs = request.jvmArgs.getOrElse(Seq.empty) ++ container.jvmArgs,
       jvmProperties = container.jvmProperties ++ request.properties.getOrElse(Map.empty))
 
-    val futures = deployClient.deploy(extendedContainer, ids)
+    deployInstances(extendedContainer, ids)
+    SubmittedInstances(request.requestId, container.name, ids)
+  }
+
+  private def deployInstances(container: ContainerDefinition, ids: Seq[InstanceId]) = {
+    ids.foreach(id => instanceToDefinition.put(id, container))
+    val futures = deployClient.deploy(container, ids)
     val logger = log
     futures.foreach(f => {
       f.map {
@@ -51,11 +60,10 @@ private[akkeeper] class DeployService(deployClient: DeployClient.Async,
           InstanceInfo.deployFailed(id)
       }.pipeTo(monitoringService)
     })
-    SubmittedInstances(request.requestId, container.name, ids)
   }
 
   override def preStart(): Unit = {
-    deployClient.start()
+    deployClient.start(self)
     log.info("Deploy service successfully initialized")
     super.preStart()
   }
@@ -66,6 +74,10 @@ private[akkeeper] class DeployService(deployClient: DeployClient.Async,
   }
 
   override protected def serviceReceive: Receive = {
+    case ResourceContainerFailure(instanceId) =>
+      val containerDefinition = instanceToDefinition.get(instanceId).get
+      log.warning(s"re-deploy instance: $instanceId ")
+      deployInstances(containerDefinition, Seq(instanceId))
     case request: DeployContainer =>
       // Before launching a new instance we should first
       // retrieve an information about the container.

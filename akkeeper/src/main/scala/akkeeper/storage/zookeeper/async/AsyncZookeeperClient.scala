@@ -42,7 +42,7 @@ private[zookeeper] class AsyncZookeeperClient(config: ZookeeperClientConfig,
       .creatingParentsIfNeeded
       .withMode(createMode)
       .inBackground(callback, executor)
-      .forPath(path, data)
+      .forPath(fixPath(path), data)
     future
   }
 
@@ -52,37 +52,39 @@ private[zookeeper] class AsyncZookeeperClient(config: ZookeeperClientConfig,
 
   final def update(path: String, data: Array[Byte]): Future[String] = {
     val (callback, future) = callbackWithFuture(_.getPath)
-    client.setData().inBackground(callback, executor).forPath(path, data)
+    client.setData().inBackground(callback, executor).forPath(fixPath(path), data)
     future
   }
 
   final def get(path: String): Future[Array[Byte]] = {
     val (callback, future) = callbackWithFuture(_.getData)
-    client.getData.inBackground(callback, executor).forPath(path)
+    client.getData.inBackground(callback, executor).forPath(fixPath(path))
     future
   }
 
   final def delete(path: String): Future[String] = {
     val (callback, future) = callbackWithFuture(_.getPath)
-    client.delete().inBackground(callback, executor).forPath(path)
+    client.delete().inBackground(callback, executor).forPath(fixPath(path))
     future
   }
 
   final def exists(path: String): Future[Stat] = {
     val (callback, future) = callbackWithFuture(_.getStat)
-    client.checkExists().inBackground(callback, executor).forPath(path)
+    client.checkExists().inBackground(callback, executor).forPath(fixPath(path))
     future
   }
 
   final def children(path: String): Future[Seq[String]] = {
     val (callback, future) = callbackWithFuture(_.getChildren.asScala)
-    client.getChildren.inBackground(callback, executor).forPath(path)
+    client.getChildren.inBackground(callback, executor).forPath(fixPath(path))
     future
   }
 
   final def getExecutionContext: ExecutionContext = {
     ExecutionContext.fromExecutor(executor)
   }
+
+  private def fixPath(path: String): String =   if (path(0) != '/') {"/" + path} else path
 
   override def stop(): Unit = {
     executor.shutdown()

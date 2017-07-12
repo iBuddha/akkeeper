@@ -26,13 +26,16 @@ import akkeeper.utils.ConfigUtils._
 import akkeeper.utils.yarn.LocalResourceNames
 import com.typesafe.config.{Config, ConfigFactory}
 import scopt.OptionParser
+
 import scala.io.Source
 import scala.util.control.NonFatal
 import spray.json._
 import ContainerDefinitionJsonProtocol._
 import ContainerInstanceService._
+import org.slf4j.LoggerFactory
 
 object ContainerInstanceMain extends App {
+  val logger = LoggerFactory.getLogger(ContainerInstanceMain.getClass)
 
   val optParser = new OptionParser[ContainerInstanceArguments]("akkeeperInstance") {
     head("akkeeperInstance", "0.1")
@@ -74,10 +77,8 @@ object ContainerInstanceMain extends App {
   def run(instanceArgs: ContainerInstanceArguments): Unit = {
     val instanceConfig = createInstanceConfig(instanceArgs)
     val actorSystem = ActorSystem(instanceConfig.getActorSystemName, instanceConfig)
-
     val zkConfig = actorSystem.settings.config.getZookeeperClientConfig
     val instanceStorage = InstanceStorageFactory.createAsync(zkConfig.child(instanceArgs.appId))
-
     val actorsJsonStr = Source.fromFile(instanceArgs.actors).getLines().mkString("\n")
     val actors = actorsJsonStr.parseJson.convertTo[Seq[ActorLaunchContext]]
 
@@ -90,6 +91,7 @@ object ContainerInstanceMain extends App {
   }
 
   try {
+    logger.info("ContainerInstanceMain starting")
     optParser.parse(args, ContainerInstanceArguments()).foreach(run)
   } catch {
     case NonFatal(e) =>

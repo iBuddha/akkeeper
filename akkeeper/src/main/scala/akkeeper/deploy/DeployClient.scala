@@ -15,15 +15,17 @@
  */
 package akkeeper.deploy
 
+import akka.actor.ActorRef
 import akkeeper.common._
 import akkeeper.deploy.yarn._
+
 import scala.concurrent.Future
 
 /** A client that is responsible for deploying new container instances. */
 private[akkeeper] trait DeployClient[F[_]] {
 
   /** Starts the client. */
-  def start(): Unit
+  def start(service: ActorRef): Unit
 
   /** Stops the client. */
   def stop(): Unit
@@ -36,10 +38,10 @@ private[akkeeper] trait DeployClient[F[_]] {
 
   /** Deploys new instances to a cluster.
     *
-    * @param container the container definition that will be used to launch new instances.
-    *                  See [[ContainerDefinition]].
-    * @param instances the list of instance IDs that will be deployed. The size of this list
-    *                  determines the total number of instances that will be launched.
+    * @param container  the container definition that will be used to launch new instances.
+    *                   See [[ContainerDefinition]].
+    * @param instances  the list of instance IDs that will be deployed. The size of this list
+    *                   determines the total number of instances that will be launched.
     * @return a collection of container objects that store the result of the deploy operation.
     *         Each item in this list represents a result for a one particular instance.
     *         See [[DeployResult]].
@@ -82,3 +84,5 @@ private[akkeeper] object DeployClientFactory {
     implicitly[T](config)
   }
 }
+
+case class ResourceContainerFailure(instanceId: InstanceId)
