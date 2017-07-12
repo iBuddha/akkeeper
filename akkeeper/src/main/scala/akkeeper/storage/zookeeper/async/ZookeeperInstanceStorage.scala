@@ -50,7 +50,7 @@ private[akkeeper] class ZookeeperInstanceStorage(config: ZookeeperClientConfig)
 
   override def getInstances: Future[Seq[InstanceId]] = {
     val instancesFuture = for {
-      containers <- zookeeperClient.children("")
+      containers <- zookeeperClient.children("/")
     } yield for {
       container <- containers
     } yield zookeeperClient.children(container)

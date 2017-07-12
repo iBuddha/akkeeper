@@ -21,11 +21,11 @@ import AssemblyKeys._
 
 object AkkeeperBuild extends Build {
 
-  val AkkaVersion = "2.3.16"
-  val AkkaHttpVersion = "2.0.4"
+  val AkkaVersion = "2.4.18"
+  val AkkaHttpVersion = "10.0.7"
   val CuratorVersion = "2.4.0"
   val SprayJsonVersion = "1.3.3"
-  val HadoopVersion = "2.6.2"
+  val HadoopVersion = "2.7.3"
   val ScalaTestVersion = "2.2.6"
   val ScalamockVersion = "3.4.2"
   val Slf4jVersion = "1.7.19"
@@ -43,7 +43,7 @@ object AkkeeperBuild extends Build {
 
   val CommonSettings = Seq(
     organization := "com.github.akkeeper-project",
-    scalaVersion := "2.11.8",
+    scalaVersion := "2.11.11",
     version := "0.1",
 
     scalacOptions ++= Seq(
@@ -60,9 +60,9 @@ object AkkeeperBuild extends Build {
       "com.typesafe.akka" %% "akka-actor" % AkkaVersion,
       "com.typesafe.akka" %% "akka-cluster" % AkkaVersion,
       "com.typesafe.akka" %% "akka-slf4j" % AkkaVersion,
-      "com.typesafe.akka" %% "akka-http-core-experimental" % AkkaHttpVersion,
-      "com.typesafe.akka" %% "akka-http-experimental" % AkkaHttpVersion,
-      "com.typesafe.akka" %% "akka-http-spray-json-experimental" % AkkaHttpVersion,
+      "com.typesafe.akka" %% "akka-http-core" % AkkaHttpVersion,
+      "com.typesafe.akka" %% "akka-http" % AkkaHttpVersion,
+      "com.typesafe.akka" %% "akka-http-spray-json" % AkkaHttpVersion,
       "io.spray" %% "spray-json" % SprayJsonVersion,
       "org.slf4j" % "slf4j-api" % Slf4jVersion,
       "org.slf4j" % "slf4j-log4j12" % Slf4jVersion,

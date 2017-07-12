@@ -122,7 +122,7 @@ class AsyncZookeeperStorageSpec extends FlatSpec
 
   it should "retrieve node children successfully" in {
     withStorage { storage =>
-      val node = UUID.randomUUID().toString
+      val node = "/" + UUID.randomUUID().toString
       await(storage.create(node))
       await(storage.create(node + "/child1"))
       await(storage.create(node + "/child2"))

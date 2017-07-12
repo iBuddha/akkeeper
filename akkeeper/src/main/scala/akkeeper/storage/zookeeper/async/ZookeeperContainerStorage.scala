@@ -65,7 +65,7 @@ private[akkeeper] class ZookeeperContainerStorage(config: ZookeeperClientConfig)
 
   override def getContainers: Future[Seq[String]] = {
     zookeeperClient
-      .children("")
+      .children("/")
       .recover(notFoundToEmptySeq[String])
   }
 
