@@ -83,6 +83,7 @@ private[akkeeper] class MasterService(deployClient: DeployClient.Async,
       } else {
         log.error("Deploy Service was terminated.")
       }
+      stopServicesWithError()
       if (context.children.isEmpty) {
         log.error("Can't proceed further. Shutting down the master")
         context.system.shutdown()
