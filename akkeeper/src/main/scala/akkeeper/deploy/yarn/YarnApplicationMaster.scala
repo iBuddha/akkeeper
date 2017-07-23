@@ -240,7 +240,9 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
       val instanceId = aliveContainerToInstance.get(status.getContainerId).get
       logger.warn(s"container ${status.getContainerId} for instance $instanceId completed" +
         s" with code ${status.getExitStatus} because of ${status.getDiagnostics}")
-      deplayService ! ResourceContainerFailure(instanceId)
+      if(status.getExitStatus == ContainerExitStatus.ABORTED) {
+        deplayService ! ResourceContainerFailure(instanceId)
+      }
     }
   }
 
