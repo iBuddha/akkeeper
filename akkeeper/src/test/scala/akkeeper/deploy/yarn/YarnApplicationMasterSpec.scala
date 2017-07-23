@@ -17,13 +17,13 @@ package akkeeper.deploy.yarn
 
 import java.util.UUID
 
-import akka.actor.Address
+import akka.actor.{ActorRef, Address}
 import akkeeper.deploy.{DeployFailed, DeploySuccessful}
-import akkeeper.{AwaitMixin, AkkeeperException}
+import akkeeper.{AkkeeperException, AwaitMixin}
 import akkeeper.common.InstanceId
 import akkeeper.utils.ConfigUtils._
 import akkeeper.utils.yarn.LocalResourceNames
-import com.typesafe.config.{ConfigValueFactory, Config, ConfigFactory}
+import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.yarn.api.protocolrecords.AllocateResponse
@@ -31,6 +31,7 @@ import org.apache.hadoop.yarn.api.records._
 import org.apache.hadoop.yarn.conf.YarnConfiguration
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{BeforeAndAfterAll, FlatSpec, Matchers}
+
 import scala.collection.JavaConverters._
 
 class YarnApplicationMasterSpec extends FlatSpec with Matchers
@@ -83,7 +84,7 @@ class YarnApplicationMasterSpec extends FlatSpec with Matchers
 
     val masterConfig = createStagingAppMasterConfig
     val master = new YarnApplicationMaster(masterConfig, yarnClient)
-    master.start()
+    master.start(ActorRef.noSender)
     master.stop()
   }
 
@@ -100,7 +101,7 @@ class YarnApplicationMasterSpec extends FlatSpec with Matchers
 
     val masterConfig = createStagingAppMasterConfig
     val master = new YarnApplicationMaster(masterConfig, yarnClient)
-    master.start()
+    master.start(ActorRef.noSender)
     master.stopWithError(expectedException)
   }
 
@@ -138,7 +139,7 @@ class YarnApplicationMasterSpec extends FlatSpec with Matchers
 
     val masterConfig = createStagingAppMasterConfig
     val master = new YarnApplicationMaster(masterConfig, yarnClient)
-    master.start()
+    master.start(ActorRef.noSender)
 
     val actualResult = master.deploy(container, Seq(instanceId))
     actualResult.size shouldBe 1
@@ -171,7 +172,7 @@ class YarnApplicationMasterSpec extends FlatSpec with Matchers
 
     val masterConfig = createStagingAppMasterConfig
     val master = new YarnApplicationMaster(masterConfig, yarnClient)
-    master.start()
+    master.start(ActorRef.noSender)
 
     val actualResult = master.deploy(container, Seq(instanceId))
     actualResult.size shouldBe 1
@@ -194,7 +195,7 @@ class YarnApplicationMasterSpec extends FlatSpec with Matchers
 
     val masterConfig = createStagingAppMasterConfig
     val master = new YarnApplicationMaster(masterConfig, yarnClient)
-    master.start()
+    master.start(ActorRef.noSender)
     master.stop()
   }
 }

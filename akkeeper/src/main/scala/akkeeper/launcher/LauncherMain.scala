@@ -19,11 +19,12 @@ import java.io.File
 
 import akkeeper.launcher.yarn.YarnLauncher
 import akkeeper.utils.yarn.YarnUtils
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.ConfigFactory
 import scopt.OptionParser
-import scala.concurrent.Await
-import scala.util.control.NonFatal
 import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
+import scala.util.control.NonFatal
+import scala.util.{Failure, Success, Try}
 
 object LauncherMain extends App {
 
@@ -76,7 +77,11 @@ object LauncherMain extends App {
 
     val launcher = new YarnLauncher(YarnUtils.getYarnConfiguration)
     launcher.start()
-    val launchResult = launcher.launch(config, launcherArgs)
+    val launchResult = Try {launcher.launch(config, launcherArgs)} match{
+      case Success(f) => f
+      case Failure(e) =>
+        Future.failed(e)
+    }
     Await.result(launchResult, LauncherTimeout)
     launcher.stop()
   }

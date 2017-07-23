@@ -55,7 +55,7 @@ private[akkeeper] class YarnLauncher(yarnConf: YarnConfiguration,
       val appReport = yarnClient.getApplicationReport(appId)
       val state = appReport.getYarnApplicationState
       state match {
-        case s @ (YarnApplicationState.SUBMITTED | YarnApplicationState.ACCEPTED) =>
+        case s@(YarnApplicationState.SUBMITTED | YarnApplicationState.ACCEPTED) =>
           logger.debug(s"Akkeeper Master is $s")
           Thread.sleep(pollInterval)
           retry()
@@ -69,6 +69,7 @@ private[akkeeper] class YarnLauncher(yarnConf: YarnConfiguration,
             appReport.getDiagnostics)
       }
     }
+
     Future {
       retry()
     }
@@ -154,6 +155,14 @@ private[akkeeper] class YarnLauncher(yarnConf: YarnConfiguration,
   }
 
   override def launch(config: Config, args: LaunchArguments): Future[LaunchResult] = {
+    try {
+      config.getContainers
+    } catch {
+      case e: Exception =>
+        logger.error("failed to parse container definition from config")
+        throw e
+    }
+
     val application = yarnClient.createApplication()
 
     val appContext = application.getApplicationSubmissionContext

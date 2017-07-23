@@ -46,7 +46,9 @@ class ContainerInstanceService(instanceStorage: InstanceStorage.Async,
   override def postStop(): Unit = {
     instanceStorage.stop()
     log.info("ContainerInstanceService stopped")
+    log.info("Shutting down ActorSystem")
     super.postStop()
+    context.system.terminate()
   }
 
   private def launchActors(actors: Seq[ActorLaunchContext]): Unit = {
