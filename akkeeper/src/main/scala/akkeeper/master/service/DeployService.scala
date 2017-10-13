@@ -34,6 +34,7 @@ private[akkeeper] class DeployService(deployClient: DeployClient.Async,
 
   private def deployInstances(request: DeployContainer,
                               container: ContainerDefinition): SubmittedInstances = {
+    log.info("deploying instance for request {} and container {}", request, container)
     val ids = (0 until request.quantity).map(_ => InstanceId(container.name))
     val instanceInfos = ids.map(InstanceInfo.deploying(_))
     monitoringService ! InstancesUpdate(instanceInfos)

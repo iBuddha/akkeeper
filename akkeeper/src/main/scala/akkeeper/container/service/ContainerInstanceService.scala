@@ -22,7 +22,8 @@ import akka.cluster.Cluster
 import akkeeper.api.OperationFailed
 import akkeeper.common._
 import akkeeper.master.service.MonitoringService
-import akkeeper.storage.InstanceStorage
+import akkeeper.storage.{InstanceStorage, RecordAlreadyExistsException}
+
 import scala.concurrent.duration._
 import scala.util.control.NonFatal
 import ContainerInstanceService._
@@ -102,6 +103,9 @@ class ContainerInstanceService(instanceStorage: InstanceStorage.Async,
       notifyMonitoringService
     case OperationFailed(_, e) =>
       // Failed to save the record to a storage.
+      if (e.isInstanceOf[RecordAlreadyExistsException]) {
+        log.error("instance already existed", e)
+      }
       log.error(e, s"Failed to store this instance information. Retrying in $retryInterval")
       // Scheduling retry.
       context.system.scheduler.scheduleOnce(retryInterval, self, RetryRegistration)
@@ -137,8 +141,11 @@ class ContainerInstanceService(instanceStorage: InstanceStorage.Async,
 }
 
 object ContainerInstanceService {
+
   private[akkeeper] case class LaunchActors(actors: Seq[ActorLaunchContext])
+
   private case object RetryRegistration
+
   private val DefaultRetryInterval = 30 seconds
 
   val ActorName = "akkeeperInstance"
