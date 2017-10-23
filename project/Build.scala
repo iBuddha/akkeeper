@@ -19,13 +19,22 @@ import scoverage.ScoverageKeys._
 import sbtassembly._
 import AssemblyKeys._
 
-object AkkeeperBuild extends Build {
+object Resolvers {
+  val hdpJetty = "HDP Jetty" at "http://repo.hortonworks.com/content/repositories/jetty-hadoop/"
+  val hdpMain = "Hortonworks Releases" at "http://repo.hortonworks.com/content/repositories/releases/"
+  val mvn = "maven1" at "https://repo1.maven.org/maven2/"
+  val mvn2 = "maven2" at "http://central.maven.org/maven2/"
+  val hdpResolver = Seq(mvn, mvn2, hdpJetty, hdpMain)
+}
 
+
+object AkkeeperBuild extends Build {
+  import Resolvers._
   val AkkaVersion = "2.4.18"
   val AkkaHttpVersion = "10.0.7"
   val CuratorVersion = "2.4.0"
   val SprayJsonVersion = "1.3.3"
-  val HadoopVersion = "2.7.3"
+  val HadoopVersion = "2.7.3.2.6.0.3-8"
   val ScalaTestVersion = "2.2.6"
   val ScalamockVersion = "3.4.2"
   val Slf4jVersion = "1.7.19"
@@ -77,6 +86,7 @@ object AkkeeperBuild extends Build {
 
   val AkkeeperSettings = CommonSettings ++ Seq(
     mainClass in Compile := Some("akkeeper.launcher.LauncherMain"),
+    resolvers := hdpResolver,
     assemblyMergeStrategy in assembly := {
       case PathList("org", "apache", xs @ _*) => MergeStrategy.first
       case "log4j.properties" => MergeStrategy.concat
