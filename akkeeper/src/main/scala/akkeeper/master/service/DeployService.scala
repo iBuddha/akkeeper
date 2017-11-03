@@ -21,7 +21,7 @@ import akkeeper.api._
 import akkeeper.common._
 import akkeeper.deploy._
 import MonitoringService._
-
+import akkeeper.utils.ConfigUtils._
 import scala.collection.mutable
 
 private[akkeeper] class DeployService(deployClient: DeployClient.Async,
@@ -74,11 +74,29 @@ private[akkeeper] class DeployService(deployClient: DeployClient.Async,
     super.postStop()
   }
 
+  private def reDeploy(instanceId: InstanceId) = {
+    val containerDefinitionOpt = instanceToDefinition.get(instanceId)
+    if(containerDefinitionOpt.isDefined) {
+      log.warning(s"re-deploy instance: $instanceId ")
+      deployInstances(containerDefinitionOpt.get, Seq(instanceId))
+    } else {
+     val configuredDeployRequests = context.system.settings.config.getDeployRequests
+     val deployRequestOpt = configuredDeployRequests.find(_.name == instanceId.containerName)
+      if(deployRequestOpt.isDefined) {
+        val deployRequest = deployRequestOpt.get.copy(quantity = 1)
+        self ! deployRequest
+        log.warning(s"re-deploy instance $instanceId")
+      } else {
+        log.error(s"can't find ${instanceId.containerName} in configured containers, give up re-deployment")
+      }
+    }
+  }
+
   override protected def serviceReceive: Receive = {
     case ResourceContainerFailure(instanceId) =>
-      val containerDefinition = instanceToDefinition.get(instanceId).get
-      log.warning(s"re-deploy instance: $instanceId ")
-      deployInstances(containerDefinition, Seq(instanceId))
+        reDeploy(instanceId)
+    case SubmittedInstances(_, container, instances) =>
+      log.debug(s"Submitted ${instances.size} instances of container '$container'")
     case request: DeployContainer =>
       // Before launching a new instance we should first
       // retrieve an information about the container.

@@ -244,11 +244,11 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
         logger.warn(s"container ${status.getContainerId} for instance $instanceId completed" +
           s" with code ${status.getExitStatus} because of ${status.getDiagnostics}")
         aliveContainerToInstance.remove(status.getContainerId)
-        if (status.getExitStatus == ContainerExitStatus.ABORTED) {
-          logger.warn("add new contains for {}", instanceId)
-          deplayService ! ResourceContainerFailure(instanceId)
+        status.getExitStatus match {
+          case ContainerExitStatus.SUCCESS => logger.warn(s"give up re-deploy $instanceId")
+          case _ => deplayService ! ResourceContainerFailure(instanceId)
         }
-      } else{
+      } else {
         logger.warn("A previously no-alive contains completed, status is {}, containId is {}",
           status.getExitStatus: Any,
           status.getContainerId: Any)
@@ -260,7 +260,7 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
                       instances: Seq[InstanceId]): Seq[Future[DeployResult]] = synchronized {
     val currentInstances = aliveContainerToInstance.values.toSet
     instances.map(id => {
-      if(!currentInstances.contains(id)) {
+      if (!currentInstances.contains(id)) {
         logger.debug(s"Deploying instance $id (container ${container.name})")
         //      instanceIdToContainerDefinition.getOrElseUpdate(id, container)
         val promise = Promise[DeployResult]()
