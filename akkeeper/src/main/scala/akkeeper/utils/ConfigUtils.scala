@@ -16,12 +16,13 @@
 package akkeeper.utils
 
 import akkeeper.api.DeployContainer
-import akkeeper.common.ContainerDefinition
+import akkeeper.common.{ContainerDefinition, InitContainer}
 import akkeeper.master.service.MasterService
 import akkeeper.storage.zookeeper.ZookeeperClientConfig
 import com.typesafe.config.{Config, ConfigValueFactory}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
+
 import scala.collection.JavaConverters._
 
 private[akkeeper] object ConfigUtils {
@@ -108,6 +109,21 @@ private[akkeeper] object ConfigUtils {
         })
       } else {
         Seq.empty
+      }
+    }
+
+    def getContainerQuantity: Map[String, InitContainer] = {
+      if (config.hasPath("akkeeper.instances")) {
+        val instances = config.getConfigList("akkeeper.instances").asScala
+        val containers = getContainers
+        instances.map(conf => {
+          val containerName = conf.getString("name")
+          val quantity = conf.getInt("quantity")
+          val containerDefinition = containers.find(_.name == containerName).get
+          (containerName, InitContainer(containerDefinition, quantity))
+        }).toMap
+      } else {
+        Map.empty
       }
     }
 

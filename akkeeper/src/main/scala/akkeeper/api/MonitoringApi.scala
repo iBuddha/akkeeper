@@ -15,6 +15,7 @@
  */
 package akkeeper.api
 
+import akka.actor.Address
 import akkeeper.common._
 import spray.json.DefaultJsonProtocol
 
@@ -78,6 +79,10 @@ case class GetInstancesBy(roles: Set[String],
   */
 case class TerminateInstance(instanceId: InstanceId,
                              requestId: RequestId = RequestId()) extends InstanceRequest
+
+case class TerminateDuplicatedInstance(instanceId: InstanceId,
+                                      address: Address,
+                                      requestId: RequestId = RequestId()) extends InstanceRequest
 
 /** The base interface for all responses related to Monitoring API. */
 sealed trait InstanceResponse extends WithRequestId

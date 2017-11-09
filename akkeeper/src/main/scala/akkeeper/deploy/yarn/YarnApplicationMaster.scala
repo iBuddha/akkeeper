@@ -243,11 +243,6 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
         val instanceId = instanceIdOpt.get
         logger.warn(s"container ${status.getContainerId} for instance $instanceId completed" +
           s" with code ${status.getExitStatus} because of ${status.getDiagnostics}")
-        aliveContainerToInstance.remove(status.getContainerId)
-        status.getExitStatus match {
-          case ContainerExitStatus.SUCCESS => logger.warn(s"give up re-deploy $instanceId")
-          case _ => deplayService ! ResourceContainerFailure(instanceId)
-        }
       } else {
         logger.warn("A previously no-alive contains completed, status is {}, containId is {}",
           status.getExitStatus: Any,

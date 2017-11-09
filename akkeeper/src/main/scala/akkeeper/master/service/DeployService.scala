@@ -30,7 +30,6 @@ private[akkeeper] class DeployService(deployClient: DeployClient.Async,
 
   private implicit val dispatcher = context.dispatcher
   override protected val trackedMessages: List[Class[_]] = List(classOf[DeployContainer])
-  private val instanceToDefinition: mutable.Map[InstanceId, ContainerDefinition] = mutable.Map.empty
 
   private def deployInstances(request: DeployContainer,
                               container: ContainerDefinition): SubmittedInstances = {
@@ -48,7 +47,6 @@ private[akkeeper] class DeployService(deployClient: DeployClient.Async,
   }
 
   private def deployInstances(container: ContainerDefinition, ids: Seq[InstanceId]) = {
-    ids.foreach(id => instanceToDefinition.put(id, container))
     val futures = deployClient.deploy(container, ids)
     val logger = log
     futures.foreach(f => {
@@ -74,27 +72,9 @@ private[akkeeper] class DeployService(deployClient: DeployClient.Async,
     super.postStop()
   }
 
-  private def reDeploy(instanceId: InstanceId) = {
-    val containerDefinitionOpt = instanceToDefinition.get(instanceId)
-    if(containerDefinitionOpt.isDefined) {
-      log.warning(s"re-deploy instance: $instanceId ")
-      deployInstances(containerDefinitionOpt.get, Seq(instanceId))
-    } else {
-     val configuredDeployRequests = context.system.settings.config.getDeployRequests
-     val deployRequestOpt = configuredDeployRequests.find(_.name == instanceId.containerName)
-      if(deployRequestOpt.isDefined) {
-        val deployRequest = deployRequestOpt.get.copy(quantity = 1)
-        self ! deployRequest
-        log.warning(s"re-deploy instance $instanceId")
-      } else {
-        log.error(s"can't find ${instanceId.containerName} in configured containers, give up re-deployment")
-      }
-    }
-  }
-
   override protected def serviceReceive: Receive = {
-    case ResourceContainerFailure(instanceId) =>
-        reDeploy(instanceId)
+    case RedeployContainer(instanceId, definition) =>
+      deployInstances(definition, Seq(instanceId))
     case SubmittedInstances(_, container, instances) =>
       log.debug(s"Submitted ${instances.size} instances of container '$container'")
     case request: DeployContainer =>

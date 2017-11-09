@@ -81,3 +81,5 @@ trait ContainerDefinitionJsonProtocol extends DefaultJsonProtocol {
 }
 
 object ContainerDefinitionJsonProtocol extends ContainerDefinitionJsonProtocol
+
+case class InitContainer(definition: ContainerDefinition, quantify: Int)

@@ -84,5 +84,3 @@ private[akkeeper] object DeployClientFactory {
     implicitly[T](config)
   }
 }
-
-case class ResourceContainerFailure(instanceId: InstanceId)

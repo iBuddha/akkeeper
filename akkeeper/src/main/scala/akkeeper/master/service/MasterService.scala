@@ -61,6 +61,11 @@ private[akkeeper] class MasterService(deployClient: DeployClient.Async,
     log.info("Master service successfully initialized")
 
     context.become(initializedReceive)
+    redeployInitialInstances()
+    unstashAll()
+  }
+
+  private def redeployInitialInstances(): Unit = {
     // Deploying instances specified in config.
     var deployRequests = context.system.settings.config.getDeployRequests
     val configuredInstanceCount  = deployRequests.map(_.quantity).sum
@@ -75,8 +80,6 @@ private[akkeeper] class MasterService(deployClient: DeployClient.Async,
       s" current running instance number is ${initInstances.size}")
 
     deployRequests.foreach(r => deployService ! r)
-
-    unstashAll()
   }
 
   private def joinCluster(seedNodes: immutable.Seq[Address]): Unit = {
@@ -103,6 +106,7 @@ private[akkeeper] class MasterService(deployClient: DeployClient.Async,
 
   private def apiReceive: Receive = {
     case r: DeployContainer => deployService.forward(r)
+    case r: RedeployContainer => deployService.forward(r)
     case r: InstanceRequest => monitoringService.forward(r)
     case r: ContainerRequest => containerService.forward(r)
   }

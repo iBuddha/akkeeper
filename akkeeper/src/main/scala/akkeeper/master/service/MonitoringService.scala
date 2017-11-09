@@ -16,17 +16,21 @@
 package akkeeper.master.service
 
 import akka.actor._
-import akka.cluster.Cluster
+import akka.cluster.{Cluster, Member, MemberStatus}
 import akka.cluster.ClusterEvent._
 import akka.pattern.pipe
 import akkeeper.api._
 import akkeeper.common._
 import akkeeper.container.service.ContainerInstanceService
 import akkeeper.storage._
+
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.util.control.NonFatal
 import MonitoringService._
+import akkeeper.utils.ConfigUtils._
+
+import scala.util.{Failure, Success}
 
 private[akkeeper] class MonitoringService(instanceStorage: InstanceStorage.Async)
   extends RequestTrackingService with Stash {
@@ -35,6 +39,7 @@ private[akkeeper] class MonitoringService(instanceStorage: InstanceStorage.Async
   private val cluster = Cluster(context.system)
   private val instances: mutable.Map[InstanceId, Option[InstanceInfo]] = mutable.Map.empty
   private val pendingTermination: mutable.Map[InstanceId, RequestId] = mutable.Map.empty
+  private val initContainers = context.system.settings.config.getContainerQuantity
 
   override protected def trackedMessages: List[Class[_]] = List(classOf[TerminateInstance])
 
@@ -75,12 +80,20 @@ private[akkeeper] class MonitoringService(instanceStorage: InstanceStorage.Async
   }
 
   private def terminateInstance(instance: InstanceInfo): Unit = {
-    val addr = instance.address.get
-    val path = RootActorPath(addr) / "user" / ContainerInstanceService.ActorName
+    terminateInstance(instance.instanceId, instance.address.get)
+  }
+
+  private def terminateInstance(instanceId: InstanceId, address: Address): Unit = {
+    val path = RootActorPath(address) / "user" / ContainerInstanceService.ActorName
     val selection = context.actorSelection(path)
     selection ! StopInstance
-    cluster.down(addr)
-    log.info(s"Instance ${instance.instanceId} terminated successfully")
+    cluster.down(address)
+    log.info(s"Instance $instanceId terminated successfully")
+  }
+
+  private def onTerminateDuplicatedInstance(request: TerminateDuplicatedInstance): Unit = {
+    log.info(s"Terminating duplicated instance ${request.instanceId}")
+    terminateInstance(request.instanceId, request.address)
   }
 
   private def onTerminateInstance(request: TerminateInstance): Unit = {
@@ -227,6 +240,22 @@ private[akkeeper] class MonitoringService(instanceStorage: InstanceStorage.Async
     }
   }
 
+  private def onMemberRemoved(member: Member, previousStatus: MemberStatus): Unit = {
+    val info = findInstanceByAddr(member.address)
+    info.foreach { i =>
+      instances.remove(i.instanceId)
+      previousStatus match {
+        case MemberStatus.Exiting =>
+          log.info(s"${i.instanceId} left cluster")
+        case _ =>
+          initContainers.get(i.containerName).map(_.definition).foreach { definition =>
+            context.parent ! RedeployContainer(i.instanceId, definition)
+            log.info(s"request re-deploy of ${i.instanceId}")
+          }
+      }
+    }
+  }
+
   private def apiCommandReceive: Receive = {
     case request: GetInstance =>
       onGetInstance(request)
@@ -236,6 +265,8 @@ private[akkeeper] class MonitoringService(instanceStorage: InstanceStorage.Async
       onGetInstancesBy(request)
     case request: TerminateInstance =>
       onTerminateInstance(request)
+    case request: TerminateDuplicatedInstance =>
+      onTerminateDuplicatedInstance(request)
   }
 
   private def internalEventReceive: Receive = {
@@ -259,9 +290,8 @@ private[akkeeper] class MonitoringService(instanceStorage: InstanceStorage.Async
       updateInstanceStatusByAddr(member.address, InstanceUnreachable)
     case ReachableMember(member) =>
       updateInstanceStatusByAddr(member.address, InstanceUp)
-    case MemberRemoved(member, _) =>
-      val info = findInstanceByAddr(member.address)
-      info.foreach(i => instances.remove(i.instanceId))
+    case MemberRemoved(member, previousStatus) =>
+      onMemberRemoved(member, previousStatus)
   }
 
   private def uninitializedReceive: Receive = {
@@ -289,9 +319,13 @@ private[akkeeper] class MonitoringService(instanceStorage: InstanceStorage.Async
 }
 
 object MonitoringService extends RemoteServiceFactory {
+
   private case class InitSuccessful(knownInstances: Seq[InstanceId])
+
   private case class InitFailed(reason: Throwable)
+
   private case class InstanceTerminationFailed(instanceId: InstanceId, originalMsg: WithRequestId)
+
   private[akkeeper] case class InstancesUpdate(updates: Seq[InstanceInfo])
 
   override val actorName = "monitoringService"

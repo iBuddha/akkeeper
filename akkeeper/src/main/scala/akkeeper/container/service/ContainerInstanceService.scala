@@ -16,17 +16,17 @@
 package akkeeper.container.service
 
 import akka.actor._
+import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.{InitialStateAsEvents, MemberUp}
 import akka.pattern.pipe
-import akka.cluster.Cluster
-import akkeeper.api.OperationFailed
+import akkeeper.api.{OperationFailed, TerminateDuplicatedInstance}
 import akkeeper.common._
+import akkeeper.container.service.ContainerInstanceService._
 import akkeeper.master.service.MonitoringService
 import akkeeper.storage.{InstanceStorage, RecordAlreadyExistsException}
 
 import scala.concurrent.duration._
 import scala.util.control.NonFatal
-import ContainerInstanceService._
 
 class ContainerInstanceService(instanceStorage: InstanceStorage.Async,
                                instanceId: InstanceId,
@@ -74,6 +74,18 @@ class ContainerInstanceService(instanceStorage: InstanceStorage.Async,
     }
   }
 
+  private def onRecordExisted() = {
+     instanceStorage.getInstance(instanceId).map(StorageInstanceInfo(_)).map{info =>
+       info.instanceInfo.address.foreach{address =>
+         if(address != cluster.selfAddress){
+           val monitoringService = MonitoringService.createRemote(context.system)
+           log.warning("request master to terminate current duplicated instance")
+           monitoringService ! TerminateDuplicatedInstance(instanceId, address)
+         }
+       }
+     }
+  }
+
   private def registerThisInstance: Unit = {
     if (!thisInstance.isDefined) {
       val actors = context.children.map(r => r.path.toStringWithoutAddress)
@@ -105,6 +117,7 @@ class ContainerInstanceService(instanceStorage: InstanceStorage.Async,
       // Failed to save the record to a storage.
       if (e.isInstanceOf[RecordAlreadyExistsException]) {
         log.error("instance already existed", e)
+        onRecordExisted()
       }
       log.error(e, s"Failed to store this instance information. Retrying in $retryInterval")
       // Scheduling retry.
@@ -143,6 +156,13 @@ class ContainerInstanceService(instanceStorage: InstanceStorage.Async,
 object ContainerInstanceService {
 
   private[akkeeper] case class LaunchActors(actors: Seq[ActorLaunchContext])
+
+  /**
+    * current instance info get from storage. If it is not current member, a message
+    * will be send to master service to close that member.
+    * @param instanceInfo
+    */
+  case class StorageInstanceInfo(instanceInfo: InstanceInfo)
 
   private case object RetryRegistration
 

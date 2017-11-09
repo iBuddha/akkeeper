@@ -64,3 +64,5 @@ object DeployApiJsonProtocol extends DeployApiJsonProtocol
 
 /* DeployService send to DeployClient to identify self */
 case class DeployServiceRef(deployService: ActorRef)
+
+case class RedeployContainer(instanceId: InstanceId, containerDefinition: ContainerDefinition)
