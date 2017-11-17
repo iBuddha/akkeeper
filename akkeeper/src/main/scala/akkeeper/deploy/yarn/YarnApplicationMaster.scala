@@ -61,11 +61,10 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
   private val containerToInstance: mutable.Map[ContainerId, InstanceId] =
     mutable.Map.empty
 
-  private val aliveContainerToInstance: mutable.Map[ContainerId, InstanceId] = mutable.Map.empty
-//  private val instanceIdToContainerDefinition: mutable.Map[InstanceId, ContainerDefinition] =
-//    mutable.Map.empty
+  //  private val instanceIdToContainerDefinition: mutable.Map[InstanceId, ContainerDefinition] =
+  //    mutable.Map.empty
   private val pendingInstances: mutable.Map[Int, (ContainerDefinition, InstanceId)] =
-    mutable.Map.empty
+  mutable.Map.empty
 
 
   private var isRunning: Boolean = false
@@ -200,8 +199,9 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
 
     result match {
       case DeploySuccessful(instanceId) =>
-        aliveContainerToInstance.put(containerId, instanceId)
-      case _: DeployFailed =>
+        logger.info("successfully deployed {}", instanceId)
+      case DeployFailed(instance, e) =>
+        logger.error(s"failed to deploy $instance", e)
     }
   }
 
@@ -238,42 +238,24 @@ private[akkeeper] class YarnApplicationMaster(config: YarnApplicationMasterConfi
   private def onContainersComplete(statuses: util.List[ContainerStatus]): Unit = {
     for (status <- statuses.asScala) {
       logger.warn(s"container: ${status.getContainerId} failed with state: ${status.getState}")
-      val instanceIdOpt = aliveContainerToInstance.get(status.getContainerId)
-      if (instanceIdOpt.isDefined) {
-        val instanceId = instanceIdOpt.get
-        logger.warn(s"container ${status.getContainerId} for instance $instanceId completed" +
-          s" with code ${status.getExitStatus} because of ${status.getDiagnostics}")
-      } else {
-        logger.warn("A previously no-alive contains completed, status is {}, containId is {}",
-          status.getExitStatus: Any,
-          status.getContainerId: Any)
-      }
+      logger.warn(s"container ${status.getContainerId} completed" +
+        s" with code ${status.getExitStatus} because of ${status.getDiagnostics}")
     }
   }
 
   override def deploy(container: ContainerDefinition,
                       instances: Seq[InstanceId]): Seq[Future[DeployResult]] = synchronized {
-    val currentInstances = aliveContainerToInstance.values.toSet
     instances.map(id => {
-      if (!currentInstances.contains(id)) {
-        logger.debug(s"Deploying instance $id (container ${container.name})")
-        //      instanceIdToContainerDefinition.getOrElseUpdate(id, container)
-        val promise = Promise[DeployResult]()
-        pendingResults.put(id, promise)
+      logger.info(s"Deploying instance $id (container ${container.name})")
+      //      instanceIdToContainerDefinition.getOrElseUpdate(id, container)
+      val promise = Promise[DeployResult]()
+      pendingResults.put(id, promise)
 
-        val request = buildContainerRequest(container)
-        pendingInstances.put(request.getPriority.getPriority, container -> id)
+      val request = buildContainerRequest(container)
+      pendingInstances.put(request.getPriority.getPriority, container -> id)
 
-        yarnClient.addContainerRequest(request)
-        promise.future
-      } else {
-        logger.warn(
-          "instance {} already has one alive container {}, do not re-deploy it again",
-          id: Any,
-          aliveContainerToInstance.find(_._2 == id).map(_._1).map(_.toString).get: Any
-        )
-        Future.successful(DeploySuccessful(id))
-      }
+      yarnClient.addContainerRequest(request)
+      promise.future
     })
   }
 
